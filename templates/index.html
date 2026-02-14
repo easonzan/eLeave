@@ -1,0 +1,223 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>员工休假管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        input[type="file"], input[type="submit"], a { box-sizing: border-box; vertical-align: middle; }
+        .action-btn {
+            height: 2.5rem;
+            min-width: 7rem;
+            padding: 0 1rem;
+            font-weight: 600;
+            border-radius: 0.375rem;
+            transition: background-color 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .action-btn-primary { background-color: #2563eb; color: white; border: none; cursor: pointer; }
+        .action-btn-primary:hover { background-color: #1d4ed8; }
+        .action-btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        /* 两行工具栏容器：左对齐、统一间距 */
+        .toolbar-section { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+        .toolbar-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 36px;
+        }
+        /* 统一控件高度 36px */
+        .toolbar-btn {
+            height: 36px;
+            padding: 0 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            box-sizing: border-box;
+            background-color: #2563eb;
+            color: white;
+            transition: background-color 0.15s;
+        }
+        .toolbar-btn:hover { background-color: #1d4ed8; }
+        /* 上传组件：文本框 + 选择文件按钮（无缝衔接），再接蓝色导入按钮 */
+        .toolbar-upload-group { display: flex; align-items: center; gap: 0; height: 36px; }
+        .toolbar-upload-group form { display: flex; align-items: center; gap: 8px; height: 36px; margin: 0; }
+        .file-combo {
+            display: flex;
+            align-items: stretch;
+            height: 36px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .file-combo .file-display {
+            width: 160px;
+            height: 100%;
+            padding: 0 10px;
+            border: none;
+            border-right: 1px solid #d1d5db;
+            background: #fff;
+            font-size: 14px;
+            color: #374151;
+            box-sizing: border-box;
+            outline: none;
+            line-height: 34px;
+        }
+        .file-combo .file-trigger {
+            height: 100%;
+            padding: 0 12px;
+            border: none;
+            background: #f3f4f6;
+            font-size: 14px;
+            color: #374151;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .file-combo .file-trigger:hover { background: #e5e7eb; }
+        .toolbar-upload-group .toolbar-btn { flex-shrink: 0; }
+        /* 导出/查看行：不拉伸，自然宽度，与第一行左对齐 */
+        .toolbar-export { display: flex; align-items: center; gap: 12px; min-height: 36px; }
+        .toolbar-export .toolbar-btn { width: auto; min-width: 0; }
+        .table-wrap { overflow-x: auto; }
+        .table-wrap table { min-width: max-content; border-collapse: collapse; }
+        .th-sticky-1, .td-sticky-1 { position: sticky; left: 0; z-index: 2; background: #2563eb; color: white; box-shadow: 2px 0 4px rgba(0,0,0,0.08); }
+        .td-sticky-1 { background: white; color: inherit; }
+        .tr:hover .td-sticky-1 { background: #f3f4f6; }
+        .th-sticky-2, .td-sticky-2 { position: sticky; z-index: 1; background: #2563eb; color: white; box-shadow: 2px 0 4px rgba(0,0,0,0.08); }
+        .td-sticky-2 { background: white; color: inherit; }
+        .tr:hover .td-sticky-2 { background: #f3f4f6; }
+        .th-sticky-2 { left: 6rem; }
+        .td-sticky-2 { left: 6rem; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="max-w-6xl mx-auto p-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">员工休假管理系统</h1>
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="mb-4 p-3 bg-green-100 border border-green-400 text-green-800 rounded">
+            {% for message in messages %}{{ message }}{% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        <div class="bg-white shadow-md rounded-lg p-5 mb-6">
+            <div class="toolbar-section">
+                <div class="text-sm font-semibold text-gray-500 mb-1">添加 / 导入</div>
+                <div class="toolbar-row">
+                    <a href="{{ url_for('add_employee') }}" class="toolbar-btn">添加员工</a>
+                    <div class="toolbar-upload-group">
+                        <form action="{{ url_for('import_employees') }}" method="post" enctype="multipart/form-data">
+                            <div class="file-combo" style="position:relative">
+                                <input type="text" class="file-display" id="fileDisplayEmployees" readonly value="未选择文件">
+                                <button type="button" class="file-trigger" onclick="document.getElementById('fileEmployees').click()">选择文件</button>
+                                <input type="file" name="file" id="fileEmployees" accept=".xlsx" style="position:absolute;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none" onchange="var d=document.getElementById('fileDisplayEmployees'); d.value=this.files.length?this.files[0].name:'未选择文件';">
+                            </div>
+                            <button type="submit" class="toolbar-btn">导入员工数据</button>
+                        </form>
+                    </div>
+                    <div class="toolbar-upload-group">
+                        <form action="{{ url_for('import_leave_records') }}" method="post" enctype="multipart/form-data">
+                            <div class="file-combo" style="position:relative">
+                                <input type="text" class="file-display" id="fileDisplayLeaves" readonly value="未选择文件">
+                                <button type="button" class="file-trigger" onclick="document.getElementById('fileLeaves').click()">选择文件</button>
+                                <input type="file" name="file" id="fileLeaves" accept=".xlsx" style="position:absolute;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none" onchange="var d=document.getElementById('fileDisplayLeaves'); d.value=this.files.length?this.files[0].name:'未选择文件';">
+                            </div>
+                            <button type="submit" class="toolbar-btn">导入休假记录</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="text-sm font-semibold text-gray-500 mb-1 mt-2">导出 / 查看</div>
+                <div class="toolbar-export">
+                    <a href="{{ url_for('export_employees') }}" class="toolbar-btn">导出员工数据</a>
+                    <a href="{{ url_for('export_all_leaves') }}" class="toolbar-btn">导出所有休假记录</a>
+                    <a href="{{ url_for('all_leaves') }}" class="toolbar-btn">显示所有休假记录</a>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white shadow-md rounded-lg table-wrap">
+            <table class="min-w-full">
+                <thead>
+                    <tr class="bg-blue-600 text-white">
+                        <th class="th-sticky-1 w-24 py-4 px-4 text-center align-middle whitespace-nowrap">工号</th>
+                        <th class="th-sticky-2 w-24 py-4 px-4 text-center align-middle whitespace-nowrap">姓名</th>
+                        <th class="py-4 px-6 text-center align-middle whitespace-nowrap min-w-[10rem]">邮箱</th>
+                        {% for cn in year_columns_cn %}
+                        <th class="py-4 px-6 text-center align-middle whitespace-nowrap min-w-[8rem]">{{ cn }}</th>
+                        {% endfor %}
+                        <th class="py-4 px-6 text-center align-middle whitespace-nowrap min-w-[8rem]">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for employee in employees %}
+                    <tr class="tr hover:bg-gray-100 transition border-b">
+                        <td class="td-sticky-1 py-4 px-4 text-center align-middle whitespace-nowrap">{{ employee[0] }}</td>
+                        <td class="td-sticky-2 py-4 px-4 text-center align-middle whitespace-nowrap">{{ employee[1] }}</td>
+                        <td class="py-4 px-6 text-center align-middle whitespace-nowrap">{{ employee[2] }}</td>
+                        {% for i in range(num_years) %}
+                        <td class="py-4 px-6 border-b text-center align-middle whitespace-nowrap">{{ employee[3 + i] }}</td>
+                        {% endfor %}
+                        <td class="py-4 px-6 text-center align-middle whitespace-nowrap">
+                            <a href="{{ url_for('employee', employee_id=employee[0]) }}" class="text-blue-600 hover:underline">查看</a> |
+                            <a href="{{ url_for('edit_employee', employee_id=employee[0]) }}" class="text-blue-600 hover:underline">编辑</a> |
+                            <a href="{{ url_for('delete_employee', employee_id=employee[0]) }}" class="text-red-600 hover:underline">删除</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
